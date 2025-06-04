@@ -18,19 +18,10 @@ def carregar_excel_da_web(url):
         st.error(f"Erro ao carregar arquivo do GitHub: {e}")
         return None
 
-# === Upload ou GitHub ===
-st.markdown("### 📥 Carregar Arquivo de Validades")
-col1, col2 = st.columns(2)
-with col1:
-    uploaded_file = st.file_uploader("Upload manual do arquivo .xlsx", type=["xlsx"])
-with col2:
-    github_url = st.text_input("Ou insira o link direto do GitHub (.xlsx):")
+# === URL do arquivo no GitHub ===
+github_url = "https://raw.githubusercontent.com/usuario/repositorio/main/planilha.xlsx"
 
-df = None
-if uploaded_file:
-    df = pd.read_excel(uploaded_file)
-elif github_url:
-    df = carregar_excel_da_web(github_url)
+df = carregar_excel_da_web(github_url)
 
 # === Processamento ===
 if df is not None:
@@ -116,4 +107,4 @@ if df is not None:
         else:
             st.warning("Nenhum produto com validade encontrada no período/filtros selecionados.")
 else:
-    st.info("Envie um arquivo Excel ou insira o link direto do GitHub.")
+    st.info("Erro ao carregar o arquivo Excel do GitHub.")
