@@ -1,13 +1,17 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
+from datetime import datetime
 import requests
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import cm
 
 st.set_page_config(page_title="Controle de Validades", layout="wide")
 
 st.title("📅 Controle de Validades de Produtos")
 
-# Função para carregar Excel da Web
+# === Função para carregar Excel da Web ===
 def carregar_excel_da_web(url):
     try:
         response = requests.get(url)
@@ -17,7 +21,7 @@ def carregar_excel_da_web(url):
         st.error(f"Erro ao carregar arquivo do GitHub: {e}")
         return None
 
-# Upload ou GitHub
+# === Upload ou GitHub ===
 st.markdown("### 📥 Carregar Arquivo de Validades")
 col1, col2 = st.columns(2)
 with col1:
@@ -31,58 +35,79 @@ if uploaded_file:
 elif github_url:
     df = carregar_excel_da_web(github_url)
 
+# === Processamento ===
 if df is not None:
     df.columns = df.columns.str.strip()
-    
-    # Ajuste para garantir que a coluna de validade está em datetime
-    col_val = [col for col in df.columns if "validade" in col.lower()]
-    if not col_val:
-        st.error("Nenhuma coluna de data de validade encontrada no arquivo.")
+
+    if "Data Validade" not in df.columns:
+        st.error("A coluna 'Data Validade' não foi encontrada no arquivo.")
     else:
-        col_validade = col_val[0]
-        df[col_validade] = pd.to_datetime(df[col_validade], errors='coerce')
-        df = df.dropna(subset=[col_validade])
-        
-        # Filtros opcionais
+        df["Data Validade"] = pd.to_datetime(df["Data Validade"], errors="coerce")
+        df = df.dropna(subset=["Data Validade"])
+
         st.markdown("---")
         st.subheader("🔍 Filtros opcionais")
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            loja = st.multiselect("Filtrar por Loja:", sorted(df['Loja'].dropna().unique()) if 'Loja' in df.columns else [])
-        with col_f2:
+
+        colf1, colf2 = st.columns(2)
+        with colf1:
+            lojas = sorted(df["Loja"].dropna().unique())
+            loja_sel = st.multiselect("Filtrar por Loja:", lojas)
+        with colf2:
             dias = st.slider("Mostrar produtos com validade nos próximos X dias:", 0, 180, 30)
 
         hoje = pd.Timestamp.today()
         limite = hoje + pd.Timedelta(days=dias)
-        
-        df_filtrado = df.copy()
-        if loja and 'Loja' in df.columns:
-            df_filtrado = df_filtrado[df_filtrado['Loja'].isin(loja)]
-        
-        df_filtrado = df_filtrado[df_filtrado[col_validade] <= limite]
-        df_filtrado = df_filtrado.sort_values(by=col_validade)
 
-        # Exibição
+        df_filtrado = df.copy()
+        if loja_sel:
+            df_filtrado = df_filtrado[df_filtrado["Loja"].isin(loja_sel)]
+
+        df_filtrado = df_filtrado[df_filtrado["Data Validade"] <= limite]
+        df_filtrado = df_filtrado.sort_values("Data Validade")
+
         st.markdown("---")
         st.subheader("📝 Lista por Data de Validade")
         st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
 
-        # Exportar para PDF (modo texto/table no Streamlit)
-        st.markdown("### 📄 Visualização para Impressão (A4)")
-        for i, row in df_filtrado.iterrows():
-            with st.container():
-                st.markdown(f"""
-                **Produto:** {row.get('Descrição', row.get('Produto', ''))}  
-                **Código:** {row.get('Produto', '')}  
-                **Validade:** `{row[col_validade].date()}`  
-                **Loja:** {row.get('Loja', '')}  
-                **Quantidade:** {row.get('Quantidade', '')}  
-                ---
-                """)
+        # === PDF: função para gerar ===
+        def gerar_pdf_validade(dataframe):
+            buffer = BytesIO()
+            c = canvas.Canvas(buffer, pagesize=A4)
+            largura, altura = A4
 
-        # Opção de download CSV para impressão
-        csv = df_filtrado.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Baixar CSV para impressão", data=csv, file_name="controle_validade.csv", mime="text/csv")
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(2 * cm, altura - 2 * cm, "Relatório de Controle de Validade")
+            c.setFont("Helvetica", 10)
 
+            y = altura - 3 * cm
+            linha = 1
+
+            for i, row in dataframe.iterrows():
+                produto = str(row.get("Descrição", ""))
+                codigo = str(row.get("Produto", ""))
+                validade = row["Data Validade"].strftime("%d/%m/%Y")
+                loja = str(row.get("Loja", ""))
+                quantidade = str(row.get("Quantidade", ""))
+
+                texto = f"{linha}. Produto: {produto} | Código: {codigo} | Validade: {validade} | Loja: {loja} | Qtde: {quantidade}"
+                c.drawString(2 * cm, y, texto)
+
+                y -= 1 * cm
+                linha += 1
+                if y < 2 * cm:
+                    c.showPage()
+                    c.setFont("Helvetica", 10)
+                    y = altura - 2 * cm
+
+            c.save()
+            buffer.seek(0)
+            return buffer
+
+        if not df_filtrado.empty:
+            st.markdown("### 📄 Gerar PDF para Impressão")
+            pdf = gerar_pdf_validade(df_filtrado)
+            st.download_button("📥 Baixar PDF A4", data=pdf, file_name="controle_validade.pdf", mime="application/pdf")
+        else:
+            st.warning("Nenhum produto com validade encontrada no período selecionado.")
 else:
-    st.info("Por favor, envie um arquivo Excel (.xlsx) ou forneça o link direto do GitHub.")
+    st.info("Envie um arquivo Excel ou insira o link direto do GitHub.")
