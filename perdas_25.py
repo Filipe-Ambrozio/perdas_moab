@@ -3,9 +3,6 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime
 import requests
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import cm
 
 st.set_page_config(page_title="Controle de Validades", layout="wide")
 
@@ -69,44 +66,30 @@ if df is not None:
         st.subheader("📝 Lista por Data de Validade")
         st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
 
-        # === PDF: função para gerar ===
-        def gerar_pdf_validade(dataframe):
-            buffer = BytesIO()
-            c = canvas.Canvas(buffer, pagesize=A4)
-            largura, altura = A4
-
-            c.setFont("Helvetica-Bold", 14)
-            c.drawString(2 * cm, altura - 2 * cm, "Relatório de Controle de Validade")
-            c.setFont("Helvetica", 10)
-
-            y = altura - 3 * cm
-            linha = 1
-
-            for i, row in dataframe.iterrows():
-                produto = str(row.get("Descrição", ""))
-                codigo = str(row.get("Produto", ""))
-                validade = row["Data Validade"].strftime("%d/%m/%Y")
-                loja = str(row.get("Loja", ""))
-                quantidade = str(row.get("Quantidade", ""))
-
-                texto = f"{linha}. Produto: {produto} | Código: {codigo} | Validade: {validade} | Loja: {loja} | Qtde: {quantidade}"
-                c.drawString(2 * cm, y, texto)
-
-                y -= 1 * cm
-                linha += 1
-                if y < 2 * cm:
-                    c.showPage()
-                    c.setFont("Helvetica", 10)
-                    y = altura - 2 * cm
-
-            c.save()
-            buffer.seek(0)
-            return buffer
-
         if not df_filtrado.empty:
-            st.markdown("### 📄 Gerar PDF para Impressão")
-            pdf = gerar_pdf_validade(df_filtrado)
-            st.download_button("📥 Baixar PDF A4", data=pdf, file_name="controle_validade.pdf", mime="application/pdf")
+            st.markdown("### ⬇️ Exportar Dados")
+
+            # Exportar para CSV
+            csv_data = df_filtrado.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📄 Baixar como CSV",
+                data=csv_data,
+                file_name="controle_validade.csv",
+                mime="text/csv"
+            )
+
+            # Exportar para Excel
+            excel_buffer = BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                df_filtrado.to_excel(writer, index=False, sheet_name='Validades')
+                writer.save()
+            excel_buffer.seek(0)
+            st.download_button(
+                label="📊 Baixar como Excel",
+                data=excel_buffer,
+                file_name="controle_validade.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
         else:
             st.warning("Nenhum produto com validade encontrada no período selecionado.")
 else:
