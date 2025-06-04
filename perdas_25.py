@@ -5,10 +5,9 @@ from datetime import datetime
 import requests
 
 st.set_page_config(page_title="Controle de Validades", layout="wide")
-
 st.title("📅 Controle de Validades de Produtos")
 
-# === Função para carregar Excel da Web ===
+# === Função para carregar Excel da Web (GitHub RAW) ===
 def carregar_excel_da_web(url):
     try:
         response = requests.get(url)
@@ -18,10 +17,24 @@ def carregar_excel_da_web(url):
         st.error(f"Erro ao carregar arquivo do GitHub: {e}")
         return None
 
-# === URL do arquivo no GitHub ===
-github_url = "https://github.com/Filipe-Ambrozio/perdas_moab/blob/main/Consulta_de_Produto_ATUAL.xlsx"
+# === Opção de carregamento ===
+st.sidebar.header("📂 Fonte do Arquivo Excel")
+modo = st.sidebar.radio("Escolha o modo de carregamento:", ["GitHub", "Upload Manual"])
 
-df = carregar_excel_da_web(github_url)
+df = None
+
+if modo == "GitHub":
+    # Corrigido: link RAW do GitHub
+    github_url = "https://raw.githubusercontent.com/Filipe-Ambrozio/perdas_moab/main/Consulta_de_Produto_ATUAL.xlsx"
+    df = carregar_excel_da_web(github_url)
+
+elif modo == "Upload Manual":
+    uploaded_file = st.sidebar.file_uploader("Faça upload do arquivo Excel (.xlsx)", type=["xlsx"])
+    if uploaded_file:
+        try:
+            df = pd.read_excel(uploaded_file)
+        except Exception as e:
+            st.error(f"Erro ao ler o arquivo: {e}")
 
 # === Processamento ===
 if df is not None:
@@ -44,14 +57,11 @@ if df is not None:
             mercadologico = sorted(df["Mercadológico"].dropna().unique()) if "Mercadológico" in df.columns else []
             merc_sel = st.multiselect("Filtrar por Mercadológico:", mercadologico)
 
-            codigos = df["Código"].dropna().unique() if "Código" in df.columns else []
             cod_input = st.text_input("Filtrar por Código (parcial ou completo):")
 
         with colf2:
-            cod_barras = df["Código Barras"].dropna().unique() if "Código Barras" in df.columns else []
             barras_input = st.text_input("Filtrar por Código Barras (parcial ou completo):")
 
-            descricoes = df["Descrição"].dropna().unique() if "Descrição" in df.columns else []
             desc_input = st.text_input("Filtrar por Descrição (parcial):")
 
             dias = st.slider("Mostrar produtos com validade nos próximos X dias:", 0, 180, 30)
@@ -61,7 +71,7 @@ if df is not None:
 
         df_filtrado = df.copy()
 
-        # Filtros aplicados
+        # Aplicar filtros
         if loja_sel:
             df_filtrado = df_filtrado[df_filtrado["Loja"].isin(loja_sel)]
         if merc_sel:
@@ -83,7 +93,7 @@ if df is not None:
         if not df_filtrado.empty:
             st.markdown("### ⬇️ Exportar Dados")
 
-            # Exportar para CSV
+            # Exportar CSV
             csv_data = df_filtrado.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="📄 Baixar como CSV",
@@ -92,11 +102,10 @@ if df is not None:
                 mime="text/csv"
             )
 
-            # Exportar para Excel
+            # Exportar Excel
             excel_buffer = BytesIO()
             with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                 df_filtrado.to_excel(writer, index=False, sheet_name='Validades')
-                writer.save()
             excel_buffer.seek(0)
             st.download_button(
                 label="📊 Baixar como Excel",
@@ -107,4 +116,4 @@ if df is not None:
         else:
             st.warning("Nenhum produto com validade encontrada no período/filtros selecionados.")
 else:
-    st.info("Erro ao carregar o arquivo Excel do GitHub.")
+    st.info("Carregue um arquivo Excel para começar.")
