@@ -19,7 +19,7 @@ def carregar_excel_da_web(url):
         return None
 
 # === URL do arquivo no GitHub ===
-github_url = "https://raw.githubusercontent.com/usuario/repositorio/main/planilha.xlsx"
+github_url = "https://github.com/Filipe-Ambrozio/perdas_moab/blob/main/Consulta_de_Produto_ATUAL.xlsx"
 
 df = carregar_excel_da_web(github_url)
 
