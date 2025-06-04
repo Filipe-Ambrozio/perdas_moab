@@ -47,17 +47,40 @@ if df is not None:
 
         colf1, colf2 = st.columns(2)
         with colf1:
-            lojas = sorted(df["Loja"].dropna().unique())
+            lojas = sorted(df["Loja"].dropna().unique()) if "Loja" in df.columns else []
             loja_sel = st.multiselect("Filtrar por Loja:", lojas)
+
+            mercadologico = sorted(df["Mercadológico"].dropna().unique()) if "Mercadológico" in df.columns else []
+            merc_sel = st.multiselect("Filtrar por Mercadológico:", mercadologico)
+
+            codigos = df["Código"].dropna().unique() if "Código" in df.columns else []
+            cod_input = st.text_input("Filtrar por Código (parcial ou completo):")
+
         with colf2:
+            cod_barras = df["Código Barras"].dropna().unique() if "Código Barras" in df.columns else []
+            barras_input = st.text_input("Filtrar por Código Barras (parcial ou completo):")
+
+            descricoes = df["Descrição"].dropna().unique() if "Descrição" in df.columns else []
+            desc_input = st.text_input("Filtrar por Descrição (parcial):")
+
             dias = st.slider("Mostrar produtos com validade nos próximos X dias:", 0, 180, 30)
 
         hoje = pd.Timestamp.today()
         limite = hoje + pd.Timedelta(days=dias)
 
         df_filtrado = df.copy()
+
+        # Filtros aplicados
         if loja_sel:
             df_filtrado = df_filtrado[df_filtrado["Loja"].isin(loja_sel)]
+        if merc_sel:
+            df_filtrado = df_filtrado[df_filtrado["Mercadológico"].isin(merc_sel)]
+        if cod_input:
+            df_filtrado = df_filtrado[df_filtrado["Código"].astype(str).str.contains(cod_input, case=False, na=False)]
+        if barras_input:
+            df_filtrado = df_filtrado[df_filtrado["Código Barras"].astype(str).str.contains(barras_input, case=False, na=False)]
+        if desc_input:
+            df_filtrado = df_filtrado[df_filtrado["Descrição"].astype(str).str.contains(desc_input, case=False, na=False)]
 
         df_filtrado = df_filtrado[df_filtrado["Data Validade"] <= limite]
         df_filtrado = df_filtrado.sort_values("Data Validade")
@@ -91,6 +114,6 @@ if df is not None:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
-            st.warning("Nenhum produto com validade encontrada no período selecionado.")
+            st.warning("Nenhum produto com validade encontrada no período/filtros selecionados.")
 else:
     st.info("Envie um arquivo Excel ou insira o link direto do GitHub.")
