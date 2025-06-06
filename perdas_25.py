@@ -2,154 +2,126 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 from datetime import datetime
+import os
 import requests
-import streamlit.components.v1 as components  # Import necessário
+import streamlit.components.v1 as components
 
-st.set_page_config(page_title="Controle de Validades", layout="wide")
-st.title("📅 Controle de Validades de Produtos")
+st.set_page_config(page_title="Coleta de Validade", layout="wide")
+st.title("🗃️ Coletar Produto para Controle de Validade")
 
 # === Função para carregar Excel da Web (GitHub RAW) ===
 def carregar_excel_da_web(url):
     try:
         response = requests.get(url)
         response.raise_for_status()
-        return pd.read_excel(BytesIO(response.content))
+        return pd.read_excel(BytesIO(response.content)), url
     except Exception as e:
         st.error(f"Erro ao carregar arquivo do GitHub: {e}")
-        return None
+        return None, None
 
 # === Fonte do arquivo ===
 st.sidebar.header("📂 Fonte do Arquivo Excel")
 modo = st.sidebar.radio("Escolha o modo de carregamento:", ["Upload Manual", "GitHub"])
 
 df = None
+arquivo_origem = None
 
 if modo == "Upload Manual":
     uploaded_file = st.sidebar.file_uploader("Faça upload do arquivo Excel (.xlsx)", type=["xlsx"])
     if uploaded_file:
         try:
             df = pd.read_excel(uploaded_file)
+            arquivo_origem = uploaded_file.name
         except Exception as e:
             st.error(f"Erro ao ler o arquivo: {e}")
 
 elif modo == "GitHub":
     github_url = "https://raw.githubusercontent.com/Filipe-Ambrozio/perdas_moab/main/Consulta_de_Produto_ATUAL.xlsx"
-    df = carregar_excel_da_web(github_url)
+    df, arquivo_origem = carregar_excel_da_web(github_url)
 
-# === Processamento ===
+# === Interface de coleta ===
 if df is not None:
     df.columns = df.columns.str.strip()
 
-    # Verifica se existe coluna de validade, senão solicita uma padrão
-    if "Data Validade" not in df.columns:
-        st.warning("A coluna 'Data Validade' não foi encontrada. Selecione uma data padrão para aplicar a todos os produtos.")
-        data_padrao = st.date_input("📆 Data de Validade Padrão:")
-        df["Data Validade"] = pd.to_datetime(data_padrao)
-    else:
-        df["Data Validade"] = pd.to_datetime(df["Data Validade"], errors="coerce")
+    st.markdown("### 🏷️ Informações do Produto")
 
-    df = df.dropna(subset=["Data Validade"])
+    mercadologico_lista = sorted(df["Mercadológico"].dropna().unique()) if "Mercadológico" in df.columns else []
+    mercadologico = st.selectbox("Escolha o Mercadológico:", mercadologico_lista)
 
-    st.markdown("---")
-    st.subheader("🔍 Filtros opcionais")
+    col1, col2 = st.columns([1, 2])
 
-    colf1, colf2 = st.columns(2)
-    with colf1:
-        lojas = sorted(df["Loja"].dropna().unique()) if "Loja" in df.columns else []
-        loja_sel = st.multiselect("Filtrar por Loja:", lojas)
+    with col1:
+        st.markdown("📷 Escaneie o Código de Barras:")
+        ativar_leitor = st.checkbox("Ativar câmera")
 
-        mercadologico = sorted(df["Mercadológico"].dropna().unique()) if "Mercadológico" in df.columns else []
-        merc_sel = st.multiselect("Filtrar por Mercadológico:", mercadologico)
-
-        cod_input = st.text_input("Filtrar por Código (parcial ou completo):")
-
-    with colf2:
-        barras_input = st.text_input("Filtrar por Código Barras (parcial ou completo):")
-
-        # === Leitor de Câmera com html5-qrcode ===
-        st.markdown("📷 **Leitor com Câmera (opcional)**")
-        ativar_leitor = st.checkbox("Ativar leitor de código de barras")
+        codigo_barras = st.text_input("Código de Barras escaneado ou digitado:")
 
         if ativar_leitor:
-            st.markdown("### 📸 Escaneie o Código de Barras")
             html_code = """
-            <div id="reader" width="300px"></div>
+            <div id="reader" width="250px"></div>
             <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
             <script>
               function onScanSuccess(decodedText, decodedResult) {
-                  const input = window.parent.document.querySelector('input[aria-label="Filtrar por Código Barras (parcial ou completo):"]');
+                  const input = window.parent.document.querySelector('input[aria-label="Código de Barras escaneado ou digitado:"]');
                   if (input) {
                       input.value = decodedText;
-                      const inputEvent = new Event('input', { bubbles: true });
-                      input.dispatchEvent(inputEvent);
+                      const event = new Event('input', { bubbles: true });
+                      input.dispatchEvent(event);
                   }
               }
 
               const html5QrCode = new Html5Qrcode("reader");
               html5QrCode.start(
                   { facingMode: "environment" },
-                  {
-                      fps: 10,
-                      qrbox: 250
-                  },
+                  { fps: 10, qrbox: 200 },
                   onScanSuccess
               );
             </script>
             """
-            components.html(html_code, height=400)
+            components.html(html_code, height=350)
 
-        desc_input = st.text_input("Filtrar por Descrição (parcial):")
+    with col2:
+        descricao = ""
+        if codigo_barras:
+            filtro = df[df["Código Barras"].astype(str) == codigo_barras]
+            if not filtro.empty:
+                descricao = filtro["Descrição"].iloc[0]
+            else:
+                st.warning("Código não encontrado no arquivo.")
 
-        dias = st.slider("Mostrar produtos com validade nos próximos X dias:", 0, 180, 30)
+        st.text_input("Descrição do Produto:", value=descricao, disabled=True)
 
-    hoje = pd.Timestamp.today()
-    limite = hoje + pd.Timedelta(days=dias)
+    data_validade = st.date_input("📅 Data de Validade (dd/mm/aaaa):", format="DD/MM/YYYY")
+    lote = st.text_input("Lote do Produto:")
 
-    df_filtrado = df.copy()
+    # === Salvando os dados coletados ===
+    if st.button("💾 Salvar Coleta"):
+        if not codigo_barras or not descricao or not lote:
+            st.warning("Preencha todos os campos antes de salvar.")
+        else:
+            registro = {
+                "Data Coleta": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "Mercadológico": mercadologico,
+                "Código Barras": codigo_barras,
+                "Descrição": descricao,
+                "Data Validade": data_validade.strftime("%d/%m/%Y"),
+                "Lote": lote,
+            }
 
-    # Aplicar filtros
-    if loja_sel and "Loja" in df.columns:
-        df_filtrado = df_filtrado[df_filtrado["Loja"].isin(loja_sel)]
-    if merc_sel:
-        df_filtrado = df_filtrado[df_filtrado["Mercadológico"].isin(merc_sel)]
-    if cod_input:
-        df_filtrado = df_filtrado[df_filtrado["Código"].astype(str).str.contains(cod_input, case=False, na=False)]
-    if barras_input:
-        df_filtrado = df_filtrado[df_filtrado["Código Barras"].astype(str).str.contains(barras_input, case=False, na=False)]
-    if desc_input:
-        df_filtrado = df_filtrado[df_filtrado["Descrição"].astype(str).str.contains(desc_input, case=False, na=False)]
+            # Caminho para salvar (mesmo diretório do Excel)
+            if modo == "GitHub":
+                save_path = "coleta_validade.csv"  # Local atual do app
+            else:
+                save_path = os.path.join(os.path.dirname(arquivo_origem), "coleta_validade.csv")
 
-    df_filtrado = df_filtrado[df_filtrado["Data Validade"] <= limite]
-    df_filtrado = df_filtrado.sort_values("Data Validade")
+            # Salvar (anexar ou criar)
+            if os.path.exists(save_path):
+                df_existente = pd.read_csv(save_path)
+                df_novo = pd.concat([df_existente, pd.DataFrame([registro])], ignore_index=True)
+            else:
+                df_novo = pd.DataFrame([registro])
 
-    st.markdown("---")
-    st.subheader("📝 Lista por Data de Validade")
-    st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
-
-    if not df_filtrado.empty:
-        st.markdown("### ⬇️ Exportar Dados")
-
-        # Exportar CSV
-        csv_data = df_filtrado.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📄 Baixar como CSV",
-            data=csv_data,
-            file_name="controle_validade.csv",
-            mime="text/csv"
-        )
-
-        # Exportar Excel
-        excel_buffer = BytesIO()
-        with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-            df_filtrado.to_excel(writer, index=False, sheet_name='Validades')
-        excel_buffer.seek(0)
-        st.download_button(
-            label="📊 Baixar como Excel",
-            data=excel_buffer,
-            file_name="controle_validade.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    else:
-        st.warning("Nenhum produto com validade encontrada no período/filtros selecionados.")
+            df_novo.to_csv(save_path, index=False)
+            st.success("✅ Produto salvo com sucesso.")
 else:
     st.info("Carregue um arquivo Excel para começar.")
