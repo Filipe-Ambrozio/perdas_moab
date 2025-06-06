@@ -3,6 +3,7 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime
 import requests
+import streamlit.components.v1 as components  # Import necessário
 
 st.set_page_config(page_title="Controle de Validades", layout="wide")
 st.title("📅 Controle de Validades de Produtos")
@@ -64,6 +65,38 @@ if df is not None:
 
     with colf2:
         barras_input = st.text_input("Filtrar por Código Barras (parcial ou completo):")
+
+        # === Leitor de Câmera com html5-qrcode ===
+        st.markdown("📷 **Leitor com Câmera (opcional)**")
+        ativar_leitor = st.checkbox("Ativar leitor de código de barras")
+
+        if ativar_leitor:
+            st.markdown("### 📸 Escaneie o Código de Barras")
+            html_code = """
+            <div id="reader" width="300px"></div>
+            <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+            <script>
+              function onScanSuccess(decodedText, decodedResult) {
+                  const input = window.parent.document.querySelector('input[aria-label="Filtrar por Código Barras (parcial ou completo):"]');
+                  if (input) {
+                      input.value = decodedText;
+                      const inputEvent = new Event('input', { bubbles: true });
+                      input.dispatchEvent(inputEvent);
+                  }
+              }
+
+              const html5QrCode = new Html5Qrcode("reader");
+              html5QrCode.start(
+                  { facingMode: "environment" },
+                  {
+                      fps: 10,
+                      qrbox: 250
+                  },
+                  onScanSuccess
+              );
+            </script>
+            """
+            components.html(html_code, height=400)
 
         desc_input = st.text_input("Filtrar por Descrição (parcial):")
 
